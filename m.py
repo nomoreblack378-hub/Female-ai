@@ -14,121 +14,92 @@ TARGET_GROUP_IDS = ["746424351272036"]
 BOT_USERNAME = "mo.chi.351"
 IST = pytz.timezone('Asia/Kolkata')
 
-def is_sleeping_time():
-    now = datetime.now(IST)
-    return now.hour >= 0 and now.hour < 7
-
 def get_ai_reply(user_message, username):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    
-    system_prompt = (
-        f"You are @{BOT_USERNAME}, a witty, savage, and flirty Indian girl. "
-        "Reply in Hinglish. Keep it extremely short (max 15 words). "
-        "Never mention you are an AI. Be real and charmingly rude."
-    )
-    
     payload = {
         "model": "llama-3.3-70b-versatile", 
         "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"User {username} said: {user_message}"}
+            {"role": "system", "content": f"You are @{BOT_USERNAME}, a savage Indian girl. Reply in short Hinglish."},
+            {"role": "user", "content": f"User {username}: {user_message}"}
         ]
     }
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=10)
-        return r.json()['choices'][0]['message']['content'].strip()
-    except:
+        res = r.json()
+        return res['choices'][0]['message']['content'].strip()
+    except Exception as e:
+        print(f"❌ AI Error: {e}")
         return None
 
 def run_bot():
-    if is_sleeping_time():
-        print("😴 Raat ho gayi hai. Anti-ban sleep mode active.")
-        return
-
     cl = Client()
     cl.set_user_agent()
 
     try:
         cl.login_by_sessionid(SESSION_ID)
         my_id = str(cl.user_id)
-        print(f"✅ Logged in! Bot: {BOT_USERNAME} | ID: {my_id}")
+        print(f"✅ Login Successful! Bot User ID: {my_id}")
     except Exception as e:
         print(f"❌ Login Failed: {e}")
         return
 
     processed_ids = set()
-    if os.path.exists('processed.json'):
-        with open('processed.json', 'r') as f:
-            try: processed_ids = set(json.load(f))
-            except: pass
-
     start_run = time.time()
-    # 22 minute tak workflow chalega
-    while (time.time() - start_run) < 1320:
+    
+    print(f"🚀 Bot Started at {datetime.now(IST)}. Monitoring Group: {TARGET_GROUP_IDS[0]}")
+
+    while (time.time() - start_run) < 1200:
         for group_id in TARGET_GROUP_IDS:
             try:
-                # Naya Method: cl.direct_messages use kiya hai jo zyada reliable hai
+                print(f"\n--- Scanning Messages ({datetime.now(IST).strftime('%H:%M:%S')}) ---")
+                
+                # Sabse latest 10 messages uthayega
                 messages = cl.direct_messages(group_id, amount=10)
                 
-                for msg in reversed(messages):
-                    if msg.id in processed_ids:
-                        continue
-                    
-                    # Khud ke messages ko ignore karein
-                    if str(msg.user_id) == my_id:
-                        processed_ids.add(msg.id)
-                        continue
+                if not messages:
+                    print("⚠️ No messages found in this Group ID. Kya ID sahi hai?")
 
-                    text = (msg.text or "").lower()
+                for msg in reversed(messages):
+                    # LOG HAR EK MESSAGE: Isse pata chalega bot kya dekh raha hai
+                    sender_id = str(msg.user_id)
+                    msg_text = msg.text or "[Non-text message]"
+                    print(f"📩 [LOG] Msg from {sender_id}: {msg_text}")
+
+                    if msg.id in processed_ids or sender_id == my_id:
+                        continue
                     
-                    # Detection logic
-                    is_mentioned = f"@{BOT_USERNAME}".lower() in text
+                    text_lower = msg_text.lower()
+                    
+                    # Detection
+                    is_mentioned = f"@{BOT_USERNAME}".lower() in text_lower
                     is_reply_to_me = False
-                    
                     if msg.reply_to_message and str(msg.reply_to_message.user_id) == my_id:
                         is_reply_to_me = True
-
+                    
                     if is_mentioned or is_reply_to_me:
-                        print(f"🎯 Message Detected! Text: {text}")
+                        print(f"🎯 TRIGGER FOUND! Processing reply for: {msg_text}")
                         
-                        # Simulating Human Thinking
-                        time.sleep(random.uniform(5, 10))
+                        # AI Reply Generation
+                        reply = get_ai_reply(msg_text, "User")
                         
-                        sender = "Friend"
-                        try:
-                            # User info fetch karna taaki AI ko naam pata chale
-                            sender = cl.user_info_v1(msg.user_id).username
-                        except: pass
-                        
-                        ai_response = get_ai_reply(text, sender)
-                        
-                        if ai_response:
-                            # Simulating Typing
-                            typing_delay = len(ai_response) * 0.12 + random.uniform(2, 5)
-                            print(f"⌨️ Typing for {typing_delay:.1f}s...")
-                            time.sleep(min(typing_delay, 12))
-                            
-                            cl.direct_send(ai_response, thread_ids=[group_id], reply_to_message_id=msg.id)
-                            print(f"✅ Successfully replied to {sender}")
+                        if reply:
+                            print(f"🤖 AI Generated Reply: {reply}")
+                            time.sleep(random.randint(5, 8))
+                            cl.direct_send(reply, thread_ids=[group_id], reply_to_message_id=msg.id)
+                            print(f"✅ Reply Sent Successfully to ID {msg.id}")
                         else:
-                            print("⚠️ AI couldn't generate a reply.")
+                            print("❌ Failed to get AI reply.")
                     
                     processed_ids.add(msg.id)
 
             except Exception as e:
-                print(f"⚠️ Loop Warning: {e}")
-                if "429" in str(e):
-                    print("🚨 Rate limit hit. Exiting to stay safe.")
-                    return
-
-        # Tracking update karein
-        with open('processed.json', 'w') as f:
-            json.dump(list(processed_ids)[-100:], f)
-            
-        wait = random.randint(60, 120)
-        print(f"😴 Waiting {wait}s for next check...")
-        time.sleep(wait)
+                print(f"⚠️ Loop Error: {e}")
+        
+        # Thoda lamba break taaki spam na lage
+        wait_time = random.randint(60, 90)
+        print(f"Waiting {wait_time}s for next scan...")
+        time.sleep(wait_time)
 
 if __name__ == "__main__":
     run_bot()
