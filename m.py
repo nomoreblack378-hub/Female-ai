@@ -1,16 +1,11 @@
-import time
-import json
-import os
-import requests
-import random
+import time, json, os, requests, random
 from datetime import datetime
 import pytz
 from instagrapi import Client
 
-# --- Configuration ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SESSION_ID = os.getenv("SESSION_ID")
-TARGET_GROUP_IDS = ["746424351272036"] 
+TARGET_GROUP_ID = "746424351272036" 
 BOT_USERNAME = "mo.chi.351"
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -26,20 +21,20 @@ def get_ai_reply(user_message, username):
     }
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=10)
-        res = r.json()
-        return res['choices'][0]['message']['content'].strip()
+        return r.json()['choices'][0]['message']['content'].strip()
     except Exception as e:
-        print(f"❌ AI Error: {e}")
+        print(f"DEBUG: AI Error -> {e}")
         return None
 
 def run_bot():
     cl = Client()
     cl.set_user_agent()
 
+    print("DEBUG: Logging in...")
     try:
         cl.login_by_sessionid(SESSION_ID)
         my_id = str(cl.user_id)
-        print(f"✅ Login Successful! Bot User ID: {my_id}")
+        print(f"✅ Logged in! My ID: {my_id}")
     except Exception as e:
         print(f"❌ Login Failed: {e}")
         return
@@ -47,59 +42,53 @@ def run_bot():
     processed_ids = set()
     start_run = time.time()
     
-    print(f"🚀 Bot Started at {datetime.now(IST)}. Monitoring Group: {TARGET_GROUP_IDS[0]}")
-
-    while (time.time() - start_run) < 1200:
-        for group_id in TARGET_GROUP_IDS:
-            try:
-                print(f"\n--- Scanning Messages ({datetime.now(IST).strftime('%H:%M:%S')}) ---")
+    while (time.time() - start_run) < 1300:
+        try:
+            print(f"\n--- Scanning GC ({datetime.now(IST).strftime('%H:%M:%S')}) ---")
+            
+            # Direct Thread fetch method
+            threads = cl.direct_threads(amount=5)
+            target_thread = None
+            
+            for thread in threads:
+                if thread.id == TARGET_GROUP_ID:
+                    target_thread = thread
+                    break
+            
+            if not target_thread:
+                print(f"⚠️ Warning: GC with ID {TARGET_GROUP_ID} not found in recent chats!")
+                # Agar ID match nahi hui toh saari available IDs dikhayega
+                print("Available Chat IDs:")
+                for t in threads: print(f"-> {t.thread_title} : {t.id}")
+            else:
+                messages = target_thread.messages
+                print(f"DEBUG: Found {len(messages)} messages in thread.")
                 
-                # Sabse latest 10 messages uthayega
-                messages = cl.direct_messages(group_id, amount=10)
-                
-                if not messages:
-                    print("⚠️ No messages found in this Group ID. Kya ID sahi hai?")
-
                 for msg in reversed(messages):
-                    # LOG HAR EK MESSAGE: Isse pata chalega bot kya dekh raha hai
-                    sender_id = str(msg.user_id)
-                    msg_text = msg.text or "[Non-text message]"
-                    print(f"📩 [LOG] Msg from {sender_id}: {msg_text}")
-
-                    if msg.id in processed_ids or sender_id == my_id:
+                    if msg.id in processed_ids or str(msg.user_id) == my_id:
                         continue
                     
-                    text_lower = msg_text.lower()
+                    text = (msg.text or "").lower()
+                    print(f"📩 Incoming: {text}")
+
+                    is_mentioned = f"@{BOT_USERNAME}".lower() in text
+                    is_reply = msg.reply_to_message and str(msg.reply_to_message.user_id) == my_id
                     
-                    # Detection
-                    is_mentioned = f"@{BOT_USERNAME}".lower() in text_lower
-                    is_reply_to_me = False
-                    if msg.reply_to_message and str(msg.reply_to_message.user_id) == my_id:
-                        is_reply_to_me = True
-                    
-                    if is_mentioned or is_reply_to_me:
-                        print(f"🎯 TRIGGER FOUND! Processing reply for: {msg_text}")
-                        
-                        # AI Reply Generation
-                        reply = get_ai_reply(msg_text, "User")
-                        
+                    if is_mentioned or is_reply:
+                        print("🎯 Trigger Match! Generating AI reply...")
+                        reply = get_ai_reply(text, "User")
                         if reply:
-                            print(f"🤖 AI Generated Reply: {reply}")
-                            time.sleep(random.randint(5, 8))
-                            cl.direct_send(reply, thread_ids=[group_id], reply_to_message_id=msg.id)
-                            print(f"✅ Reply Sent Successfully to ID {msg.id}")
-                        else:
-                            print("❌ Failed to get AI reply.")
+                            time.sleep(random.randint(5, 10))
+                            cl.direct_send(reply, thread_ids=[TARGET_GROUP_ID], reply_to_message_id=msg.id)
+                            print(f"✅ Reply Sent: {reply}")
                     
                     processed_ids.add(msg.id)
 
-            except Exception as e:
-                print(f"⚠️ Loop Error: {e}")
+        except Exception as e:
+            print(f"⚠️ Loop Error: {e}")
         
-        # Thoda lamba break taaki spam na lage
-        wait_time = random.randint(60, 90)
-        print(f"Waiting {wait_time}s for next scan...")
-        time.sleep(wait_time)
+        print(f"Waiting 60s...")
+        time.sleep(60)
 
 if __name__ == "__main__":
     run_bot()
