@@ -16,7 +16,7 @@ def get_ai_reply(user_message, username, context_message=None):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     
-    system_content = f"You are @{BOT_USERNAME}, a witty Indian girl. Reply in short Hinglish (max 10 words). Be natural."
+    system_content = f"You are @{BOT_USERNAME}, a witty Indian girl. Reply in short Hinglish (max 10 words). Be natural and savage."
     user_content = f"User {username} swiped on your msg '{context_message}': {user_message}" if context_message else f"User {username}: {user_message}"
 
     payload = {
@@ -30,7 +30,7 @@ def get_ai_reply(user_message, username, context_message=None):
 
 def run_bot():
     cl = Client()
-    # User-agent change karna zaroori hai metadata ke liye
+    # Updated User-Agent for better metadata
     cl.set_user_agent("Instagram 219.0.0.12.117 Android (30/11; 480dpi; 1080x2214; Google; Pixel 5; redfin; qcom; en_US; 340011805)")
 
     log("Starting login process...")
@@ -56,26 +56,25 @@ def run_bot():
                     continue
                 
                 text = (msg.text or "").lower()
+                
+                # --- NEW FORCE SWIPE DETECTION ---
                 is_mentioned = f"@{BOT_USERNAME}".lower() in text
                 is_reply_to_me = False
                 context_text = None
-
-                # --- NEW FORCE DETECTION LOGIC ---
-                try:
-                    # Method 1: Check deep dictionary for metadata
-                    m_dict = msg.dict()
-                    reply_info = m_dict.get('replied_to_message', {})
-                    if reply_info and str(reply_info.get('user_id', '')) == my_id:
+                
+                # Metadata extraction from dict for stability
+                m_dict = msg.dict()
+                reply_info = m_dict.get('replied_to_message', {})
+                
+                # Agar replied_to_message exist karta hai aur uska owner Bot hai
+                if reply_info and str(reply_info.get('user_id', '')) == my_id:
+                    is_reply_to_me = True
+                    context_text = reply_info.get('text', '')
+                
+                # Fallback check
+                if not is_reply_to_me and hasattr(msg, 'reply_to_message_id'):
+                    if msg.reply_to_message_id:
                         is_reply_to_me = True
-                        context_text = reply_info.get('text', '')
-                    
-                    # Method 2: Fallback for different library versions
-                    if not is_reply_to_me:
-                        r_msg = getattr(msg, 'replied_to_message', None) or getattr(msg, 'reply_to_message', None)
-                        if r_msg and str(getattr(r_msg, 'user_id', '')) == my_id:
-                            is_reply_to_me = True
-                            context_text = getattr(r_msg, 'text', '')
-                except: pass
 
                 log(f"📩 Incoming: {text} | Swipe: {is_reply_to_me}")
 
@@ -83,15 +82,18 @@ def run_bot():
                     log(f"🎯 Match Triggered!")
                     
                     sender = "User"
-                    try: sender = cl.user_info_v1(msg.user_id).username
+                    try: 
+                        # User info fetch for username
+                        user_meta = cl.user_info_v1(msg.user_id)
+                        sender = user_meta.username
                     except: pass
                     
                     reply_content = get_ai_reply(text, sender, context_text)
                     if reply_content:
                         time.sleep(random.randint(5, 10))
                         try:
-                            # FIXING THE POSITIONAL ARGUMENT ERROR
-                            # Syntax: direct_answer(thread_id, text, item_id)
+                            # FIXING THE ARGUMENT ERROR: (text, thread_id, item_id)
+                            # Keyword arguments hata diye hain positional error fix karne ke liye
                             cl.direct_answer(TARGET_GROUP_ID, reply_content, msg.id)
                             log(f"✅ Swipe-Reply Sent!")
                         except Exception as e:
@@ -107,7 +109,7 @@ def run_bot():
             else:
                 log(f"⚠️ Loop Warning: {e}")
         
-        time.sleep(45) # Rate limit se bachne ke liye
+        time.sleep(45)
 
 if __name__ == "__main__":
     run_bot()
