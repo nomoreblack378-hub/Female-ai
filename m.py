@@ -16,12 +16,8 @@ def get_ai_reply(user_message, username, context_message=None):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     
-    system_content = f"You are @{BOT_USERNAME}, a witty and savage Indian girl. Reply in short Hinglish (max 15 words). Be natural and funny."
-    
-    if context_message:
-        user_content = f"User {username} replied to message: '{context_message}'. User said: '{user_message}'"
-    else:
-        user_content = f"User {username}: {user_message}"
+    system_content = f"You are @{BOT_USERNAME}, a witty and savage Indian girl. Reply in short Hinglish (max 15 words). Be natural."
+    user_content = f"User {username} swiped on your msg '{context_message}': {user_message}" if context_message else f"User {username}: {user_message}"
 
     payload = {
         "model": "llama-3.3-70b-versatile", 
@@ -33,8 +29,7 @@ def get_ai_reply(user_message, username, context_message=None):
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=10)
         return r.json()['choices'][0]['message']['content'].strip()
-    except Exception as e:
-        log(f"AI Error -> {e}")
+    except:
         return None
 
 def run_bot():
@@ -56,7 +51,8 @@ def run_bot():
     while (time.time() - start_time) < 1320:
         try:
             log(f"--- Scanning Chat ({datetime.now(IST).strftime('%H:%M:%S')}) ---")
-            messages = cl.direct_messages(TARGET_GROUP_ID, amount=20)
+            # Amount kam kiya taaki rate limit na ho
+            messages = cl.direct_messages(TARGET_GROUP_ID, amount=10)
             
             for msg in reversed(messages):
                 if msg.id in processed_ids or str(msg.user_id) == my_id:
@@ -65,11 +61,12 @@ def run_bot():
                 
                 text = (msg.text or "").lower()
                 
-                # Detection Logic
+                # --- BETTER DETECTION ---
                 is_mentioned = f"@{BOT_USERNAME}".lower() in text
                 is_reply_to_me = False
                 context_text = None
                 
+                # Instagrapi structure check
                 replied_msg = getattr(msg, 'replied_to_message', None)
                 if replied_msg:
                     r_user_id = str(replied_msg.get('user_id', '')) if isinstance(replied_msg, dict) else str(getattr(replied_msg, 'user_id', ''))
@@ -77,34 +74,36 @@ def run_bot():
                         is_reply_to_me = True
                         context_text = replied_msg.get('text', '') if isinstance(replied_msg, dict) else getattr(replied_msg, 'text', '')
 
-                # Response Trigger
                 if is_mentioned or is_reply_to_me:
                     log(f"🎯 Trigger: Mention={is_mentioned}, Swipe={is_reply_to_me}")
                     
-                    sender_username = "User"
-                    try: sender_username = cl.user_info_v1(msg.user_id).username
+                    sender = "User"
+                    try: sender = cl.user_info_v1(msg.user_id).username
                     except: pass
                     
-                    reply_content = get_ai_reply(text, sender_username, context_text)
+                    reply_content = get_ai_reply(text, sender, context_text)
                     
                     if reply_content:
-                        time.sleep(random.randint(4, 7))
+                        # Human speed delay
+                        time.sleep(random.randint(5, 10))
                         
-                        # --- KEY CHANGE: Swipe karke reply dena ---
-                        # direct_answer function use karke bot usi message par swipe karega
+                        # --- CORRECTED SWIPE REPLY FUNCTION ---
                         try:
-                            cl.direct_answer(TARGET_GROUP_ID, reply_content, msg.id)
-                            log(f"✅ Sent Swipe-Reply to {sender_username}")
-                        except Exception as send_err:
-                            log(f"Fallback to normal send: {send_err}")
+                            # instagrapi direct_answer syntax fix: (text, thread_id, item_id)
+                            cl.direct_answer(text=reply_content, thread_id=TARGET_GROUP_ID, item_id=msg.id)
+                            log(f"✅ Swipe-Reply Sent!")
+                        except Exception as e:
+                            log(f"⚠️ Swipe failed, sending normal: {e}")
                             cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
                 
                 processed_ids.add(msg.id)
 
         except Exception as e:
             log(f"⚠️ Loop Warning: {e}")
+            time.sleep(60) # Error aane par 1 minute ruk jao
         
-        time.sleep(20)
+        # Rate limit se bachne ke liye gap badha diya
+        time.sleep(45)
 
 if __name__ == "__main__":
     run_bot()
