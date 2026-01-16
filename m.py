@@ -1,7 +1,11 @@
-import time, json, os, requests, random
+import time, json, os, requests, random, sys
 from datetime import datetime
 import pytz
 from instagrapi import Client
+
+# Force print for GitHub logs (Immediate output)
+def log(message):
+    print(f"DEBUG: {message}", flush=True)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SESSION_ID = os.getenv("SESSION_ID")
@@ -15,7 +19,7 @@ def get_ai_reply(user_message, username):
     payload = {
         "model": "llama-3.3-70b-versatile", 
         "messages": [
-            {"role": "system", "content": f"You are @{BOT_USERNAME}, a savage Indian girl. Reply in short Hinglish."},
+            {"role": "system", "content": f"You are @{BOT_USERNAME}, a savage Indian girl. Reply in short Hinglish (max 15 words)."},
             {"role": "user", "content": f"User {username}: {user_message}"}
         ]
     }
@@ -23,71 +27,65 @@ def get_ai_reply(user_message, username):
         r = requests.post(url, headers=headers, json=payload, timeout=10)
         return r.json()['choices'][0]['message']['content'].strip()
     except Exception as e:
-        print(f"DEBUG: AI Error -> {e}")
+        log(f"AI Error -> {e}")
         return None
 
 def run_bot():
     cl = Client()
     cl.set_user_agent()
 
-    print("DEBUG: Logging in...")
+    log("Starting login process...")
     try:
         cl.login_by_sessionid(SESSION_ID)
         my_id = str(cl.user_id)
-        print(f"✅ Logged in! My ID: {my_id}")
+        log(f"✅ Logged in! My ID: {my_id}")
     except Exception as e:
-        print(f"❌ Login Failed: {e}")
+        log(f"❌ Login Failed: {e}")
         return
 
     processed_ids = set()
-    start_run = time.time()
+    start_time = time.time()
     
-    while (time.time() - start_run) < 1300:
+    # 22 minutes loop
+    while (time.time() - start_time) < 1320:
         try:
-            print(f"\n--- Scanning GC ({datetime.now(IST).strftime('%H:%M:%S')}) ---")
+            current_time = datetime.now(IST).strftime('%H:%M:%S')
+            log(f"--- Scanning Chat at {current_time} ---")
             
-            # Direct Thread fetch method
-            threads = cl.direct_threads(amount=5)
-            target_thread = None
+            # Method 1: Direct Messages
+            messages = cl.direct_messages(TARGET_GROUP_ID, amount=10)
             
-            for thread in threads:
-                if thread.id == TARGET_GROUP_ID:
-                    target_thread = thread
-                    break
-            
-            if not target_thread:
-                print(f"⚠️ Warning: GC with ID {TARGET_GROUP_ID} not found in recent chats!")
-                # Agar ID match nahi hui toh saari available IDs dikhayega
-                print("Available Chat IDs:")
-                for t in threads: print(f"-> {t.thread_title} : {t.id}")
-            else:
-                messages = target_thread.messages
-                print(f"DEBUG: Found {len(messages)} messages in thread.")
-                
-                for msg in reversed(messages):
-                    if msg.id in processed_ids or str(msg.user_id) == my_id:
-                        continue
-                    
-                    text = (msg.text or "").lower()
-                    print(f"📩 Incoming: {text}")
+            if not messages:
+                log("⚠️ No messages found. Group ID check might be needed.")
 
-                    is_mentioned = f"@{BOT_USERNAME}".lower() in text
-                    is_reply = msg.reply_to_message and str(msg.reply_to_message.user_id) == my_id
-                    
-                    if is_mentioned or is_reply:
-                        print("🎯 Trigger Match! Generating AI reply...")
-                        reply = get_ai_reply(text, "User")
-                        if reply:
-                            time.sleep(random.randint(5, 10))
-                            cl.direct_send(reply, thread_ids=[TARGET_GROUP_ID], reply_to_message_id=msg.id)
-                            print(f"✅ Reply Sent: {reply}")
-                    
-                    processed_ids.add(msg.id)
+            for msg in reversed(messages):
+                if msg.id in processed_ids or str(msg.user_id) == my_id:
+                    continue
+                
+                text = (msg.text or "").lower()
+                log(f"📩 New Message: {text}")
+
+                is_mentioned = f"@{BOT_USERNAME}".lower() in text
+                is_reply = msg.reply_to_message and str(msg.reply_to_message.user_id) == my_id
+                
+                if is_mentioned or is_reply:
+                    log(f"🎯 Match Found! Mention: {is_mentioned}, Reply: {is_reply}")
+                    reply = get_ai_reply(text, "User")
+                    if reply:
+                        time.sleep(random.randint(4, 8))
+                        cl.direct_send(reply, thread_ids=[TARGET_GROUP_ID], reply_to_message_id=msg.id)
+                        log(f"✅ Sent Reply: {reply}")
+                
+                processed_ids.add(msg.id)
 
         except Exception as e:
-            print(f"⚠️ Loop Error: {e}")
+            log(f"⚠️ Loop Error: {e}")
+            if "not found" in str(e).lower():
+                log("Searching available Chat IDs for you...")
+                for t in cl.direct_threads(amount=5):
+                    log(f"Found -> Name: {t.thread_title} | ID: {t.id}")
         
-        print(f"Waiting 60s...")
+        log("Sleeping for 60 seconds...")
         time.sleep(60)
 
 if __name__ == "__main__":
