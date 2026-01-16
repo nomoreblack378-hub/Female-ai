@@ -3,7 +3,7 @@ from datetime import datetime
 import pytz
 from instagrapi import Client
 
-# Force print for GitHub logs (Immediate output)
+# Force print for GitHub logs
 def log(message):
     print(f"DEBUG: {message}", flush=True)
 
@@ -46,18 +46,13 @@ def run_bot():
     processed_ids = set()
     start_time = time.time()
     
-    # 22 minutes loop
     while (time.time() - start_time) < 1320:
         try:
             current_time = datetime.now(IST).strftime('%H:%M:%S')
             log(f"--- Scanning Chat at {current_time} ---")
             
-            # Method 1: Direct Messages
             messages = cl.direct_messages(TARGET_GROUP_ID, amount=10)
             
-            if not messages:
-                log("⚠️ No messages found. Group ID check might be needed.")
-
             for msg in reversed(messages):
                 if msg.id in processed_ids or str(msg.user_id) == my_id:
                     continue
@@ -65,14 +60,21 @@ def run_bot():
                 text = (msg.text or "").lower()
                 log(f"📩 New Message: {text}")
 
+                # Detection Logic
                 is_mentioned = f"@{BOT_USERNAME}".lower() in text
-                is_reply = msg.reply_to_message and str(msg.reply_to_message.user_id) == my_id
+                
+                # Reply check (Fixed version)
+                is_reply = False
+                # Agar message object mein reply_to_message_id hai, toh check karein
+                reply_data = getattr(msg, 'reply_to_message', None)
+                if reply_data and str(reply_data.get('user_id')) == my_id:
+                    is_reply = True
                 
                 if is_mentioned or is_reply:
                     log(f"🎯 Match Found! Mention: {is_mentioned}, Reply: {is_reply}")
                     reply = get_ai_reply(text, "User")
                     if reply:
-                        time.sleep(random.randint(4, 8))
+                        time.sleep(random.randint(5, 10))
                         cl.direct_send(reply, thread_ids=[TARGET_GROUP_ID], reply_to_message_id=msg.id)
                         log(f"✅ Sent Reply: {reply}")
                 
@@ -80,14 +82,9 @@ def run_bot():
 
         except Exception as e:
             log(f"⚠️ Loop Error: {e}")
-            if "not found" in str(e).lower():
-                log("Searching available Chat IDs for you...")
-                for t in cl.direct_threads(amount=5):
-                    log(f"Found -> Name: {t.thread_title} | ID: {t.id}")
         
         log("Sleeping for 60 seconds...")
         time.sleep(60)
 
 if __name__ == "__main__":
     run_bot()
-    
