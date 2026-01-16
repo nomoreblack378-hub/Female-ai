@@ -18,7 +18,7 @@ def get_ai_reply(user_message, username):
     payload = {
         "model": "llama-3.3-70b-versatile", 
         "messages": [
-            {"role": "system", "content": f"You are @{BOT_USERNAME}, a savage Indian girl. Reply in short Hinglish (max 15 words)."},
+            {"role": "system", "content": f"You are @{BOT_USERNAME}, a witty and savage Indian girl. Reply in short Hinglish (max 15 words). Be very natural."},
             {"role": "user", "content": f"User {username}: {user_message}"}
         ]
     }
@@ -47,9 +47,7 @@ def run_bot():
     
     while (time.time() - start_time) < 1320:
         try:
-            log(f"--- Scanning Chat at {datetime.now(IST).strftime('%H:%M:%S')} ---")
-            
-            # Stable message fetching
+            log(f"--- Scanning Chat ({datetime.now(IST).strftime('%H:%M:%S')}) ---")
             messages = cl.direct_messages(TARGET_GROUP_ID, amount=10)
             
             for msg in reversed(messages):
@@ -57,36 +55,41 @@ def run_bot():
                     continue
                 
                 text = (msg.text or "").lower()
-                log(f"📩 New Message: {text}")
+                log(f"📩 Incoming: {text}")
 
-                # Mention Check
+                # 1. Mention Detection
                 is_mentioned = f"@{BOT_USERNAME}".lower() in text
                 
-                # Reply Check (Safe handling)
-                is_reply = False
-                try:
-                    # checking if it's a reply to bot
-                    reply_to = getattr(msg, 'reply_to_message', None)
-                    if reply_to and str(reply_to.get('user_id', '')) == my_id:
-                        is_reply = True
-                except: pass
+                # 2. Swipe/Slide Reply Detection (FIXED)
+                is_reply_to_me = False
+                # Instagrapi mein reply_to_message ek dictionary ho sakti hai ya object
+                reply_val = getattr(msg, 'reply_to_message', None)
+                if reply_val:
+                    # Agar dictionary hai toh .get() use karenge, agar object hai toh .user_id
+                    reply_user_id = str(reply_val.get('user_id', '')) if isinstance(reply_val, dict) else str(getattr(reply_val, 'user_id', ''))
+                    if reply_user_id == my_id:
+                        is_reply_to_me = True
                 
-                if is_mentioned or is_reply:
-                    log(f"🎯 Match Found! Mention: {is_mentioned}, Reply: {is_reply}")
-                    reply = get_ai_reply(text, "User")
-                    if reply:
-                        time.sleep(random.randint(5, 10))
-                        # Sending normal direct send to avoid "keyword argument" error
-                        cl.direct_send(reply, thread_ids=[TARGET_GROUP_ID])
-                        log(f"✅ Sent Reply: {reply}")
+                if is_mentioned or is_reply_to_me:
+                    log(f"🎯 Match! Mention: {is_mentioned}, Swipe-Reply: {is_reply_to_me}")
+                    
+                    sender = "User"
+                    try: sender = cl.user_info_v1(msg.user_id).username
+                    except: pass
+                    
+                    reply_content = get_ai_reply(text, sender)
+                    if reply_content:
+                        time.sleep(random.randint(4, 7)) # Human delay
+                        cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
+                        log(f"✅ Sent Reply: {reply_content}")
                 
                 processed_ids.add(msg.id)
 
         except Exception as e:
-            log(f"⚠️ Loop Error: {e}")
+            log(f"⚠️ Loop Warning: {e}")
         
-        log("Sleeping for 60 seconds...")
         time.sleep(60)
 
 if __name__ == "__main__":
     run_bot()
+    
