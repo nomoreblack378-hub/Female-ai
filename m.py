@@ -3,7 +3,6 @@ from datetime import datetime
 import pytz
 from instagrapi import Client
 
-# Force print for GitHub logs
 def log(message):
     print(f"DEBUG: {message}", flush=True)
 
@@ -48,9 +47,9 @@ def run_bot():
     
     while (time.time() - start_time) < 1320:
         try:
-            current_time = datetime.now(IST).strftime('%H:%M:%S')
-            log(f"--- Scanning Chat at {current_time} ---")
+            log(f"--- Scanning Chat at {datetime.now(IST).strftime('%H:%M:%S')} ---")
             
+            # Stable message fetching
             messages = cl.direct_messages(TARGET_GROUP_ID, amount=10)
             
             for msg in reversed(messages):
@@ -60,22 +59,25 @@ def run_bot():
                 text = (msg.text or "").lower()
                 log(f"📩 New Message: {text}")
 
-                # Detection Logic
+                # Mention Check
                 is_mentioned = f"@{BOT_USERNAME}".lower() in text
                 
-                # Reply check (Fixed version)
+                # Reply Check (Safe handling)
                 is_reply = False
-                # Agar message object mein reply_to_message_id hai, toh check karein
-                reply_data = getattr(msg, 'reply_to_message', None)
-                if reply_data and str(reply_data.get('user_id')) == my_id:
-                    is_reply = True
+                try:
+                    # checking if it's a reply to bot
+                    reply_to = getattr(msg, 'reply_to_message', None)
+                    if reply_to and str(reply_to.get('user_id', '')) == my_id:
+                        is_reply = True
+                except: pass
                 
                 if is_mentioned or is_reply:
                     log(f"🎯 Match Found! Mention: {is_mentioned}, Reply: {is_reply}")
                     reply = get_ai_reply(text, "User")
                     if reply:
                         time.sleep(random.randint(5, 10))
-                        cl.direct_send(reply, thread_ids=[TARGET_GROUP_ID], reply_to_message_id=msg.id)
+                        # Sending normal direct send to avoid "keyword argument" error
+                        cl.direct_send(reply, thread_ids=[TARGET_GROUP_ID])
                         log(f"✅ Sent Reply: {reply}")
                 
                 processed_ids.add(msg.id)
