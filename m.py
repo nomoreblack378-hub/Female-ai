@@ -11,7 +11,7 @@ from instagrapi import Client
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SESSION_ID = os.getenv("SESSION_ID")
 TARGET_GROUP_IDS = ["746424351272036"] 
-BOT_USERNAME = "mo.chi.351"  # Updated username
+BOT_USERNAME = "mo.chi.351"
 IST = pytz.timezone('Asia/Kolkata')
 
 def is_sleeping_time():
@@ -25,7 +25,7 @@ def get_ai_reply(user_message, username):
     system_prompt = (
         f"You are @{BOT_USERNAME}, a witty, savage, and flirty Indian girl. "
         "Reply in Hinglish. Keep it extremely short (max 15 words). "
-        "Be very natural. If someone mentions you or replies to you, be charmingly savage."
+        "Never mention you are an AI. Be real and charmingly rude."
     )
     
     payload = {
@@ -43,18 +43,18 @@ def get_ai_reply(user_message, username):
 
 def run_bot():
     if is_sleeping_time():
-        print("😴 Raat ke 12-7 baje hain. Anti-ban sleep mode active.")
+        print("😴 Raat ho gayi hai. Anti-ban sleep mode active.")
         return
 
     cl = Client()
-    cl.set_user_agent() # Randomized Mobile Fingerprint
+    cl.set_user_agent()
 
     try:
         cl.login_by_sessionid(SESSION_ID)
         my_id = str(cl.user_id)
-        print(f"✅ Logged in as {BOT_USERNAME} (ID: {my_id})")
+        print(f"✅ Logged in! Bot: {BOT_USERNAME} | ID: {my_id}")
     except Exception as e:
-        print(f"❌ Login Error: {e}")
+        print(f"❌ Login Failed: {e}")
         return
 
     processed_ids = set()
@@ -64,72 +64,72 @@ def run_bot():
             except: pass
 
     start_run = time.time()
-    # GitHub Action run duration (approx 20 mins)
-    while (time.time() - start_run) < 1200:
+    # 22 minute tak workflow chalega
+    while (time.time() - start_run) < 1320:
         for group_id in TARGET_GROUP_IDS:
             try:
-                print(f"🔍 Scanning GC for new interactions...")
-                thread = cl.direct_thread(group_id, amount=7)
-                messages = thread.messages 
+                # Naya Method: cl.direct_messages use kiya hai jo zyada reliable hai
+                messages = cl.direct_messages(group_id, amount=10)
                 
                 for msg in reversed(messages):
                     if msg.id in processed_ids:
                         continue
                     
-                    # Don't reply to self
+                    # Khud ke messages ko ignore karein
                     if str(msg.user_id) == my_id:
                         processed_ids.add(msg.id)
                         continue
 
                     text = (msg.text or "").lower()
                     
-                    # DETECTION LOGIC
+                    # Detection logic
                     is_mentioned = f"@{BOT_USERNAME}".lower() in text
                     is_reply_to_me = False
                     
-                    if hasattr(msg, 'reply_to_message') and msg.reply_to_message:
-                        if str(msg.reply_to_message.user_id) == my_id:
-                            is_reply_to_me = True
+                    if msg.reply_to_message and str(msg.reply_to_message.user_id) == my_id:
+                        is_reply_to_me = True
 
                     if is_mentioned or is_reply_to_me:
-                        print(f"🎯 Found trigger! Mention: {is_mentioned} | Reply: {is_reply_to_me}")
+                        print(f"🎯 Message Detected! Text: {text}")
                         
-                        # Step 1: Human Reading Delay
-                        time.sleep(random.uniform(5, 12))
+                        # Simulating Human Thinking
+                        time.sleep(random.uniform(5, 10))
                         
                         sender = "Friend"
                         try:
+                            # User info fetch karna taaki AI ko naam pata chale
                             sender = cl.user_info_v1(msg.user_id).username
                         except: pass
                         
                         ai_response = get_ai_reply(text, sender)
                         
                         if ai_response:
-                            # Step 2: Typing Simulation Delay
-                            typing_delay = len(ai_response) * 0.15 + random.uniform(3, 6)
-                            print(f"⌨️ Typing response to {sender} for {typing_delay:.1f}s...")
-                            time.sleep(min(typing_delay, 15))
+                            # Simulating Typing
+                            typing_delay = len(ai_response) * 0.12 + random.uniform(2, 5)
+                            print(f"⌨️ Typing for {typing_delay:.1f}s...")
+                            time.sleep(min(typing_delay, 12))
                             
-                            # Step 3: Send Reply
                             cl.direct_send(ai_response, thread_ids=[group_id], reply_to_message_id=msg.id)
                             print(f"✅ Successfully replied to {sender}")
+                        else:
+                            print("⚠️ AI couldn't generate a reply.")
                     
                     processed_ids.add(msg.id)
 
             except Exception as e:
-                print(f"⚠️ Warning: {e}")
+                print(f"⚠️ Loop Warning: {e}")
                 if "429" in str(e):
-                    print("🚨 Rate Limit Hit. Sleeping for 20 mins.")
+                    print("🚨 Rate limit hit. Exiting to stay safe.")
                     return
 
-        # Progress Persistence
+        # Tracking update karein
         with open('processed.json', 'w') as f:
             json.dump(list(processed_ids)[-100:], f)
             
-        # Random Gap between scanning cycles
-        sleep_gap = random.randint(60, 150)
-        print(f"☕ Taking a break for {sleep_gap}s...")
-        time.sleep(sleep_gap)
+        wait = random.randint(60, 120)
+        print(f"😴 Waiting {wait}s for next check...")
+        time.sleep(wait)
 
 if __name__ == "__main__":
     run_bot()
+    
