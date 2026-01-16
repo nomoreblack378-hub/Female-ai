@@ -30,7 +30,7 @@ def get_ai_reply(user_message, username, context_message=None):
 
 def run_bot():
     cl = Client()
-    # Updated User-Agent for better metadata
+    # Updated User-Agent for better metadata fetching
     cl.set_user_agent("Instagram 219.0.0.12.117 Android (30/11; 480dpi; 1080x2214; Google; Pixel 5; redfin; qcom; en_US; 340011805)")
 
     log("Starting login process...")
@@ -57,24 +57,24 @@ def run_bot():
                 
                 text = (msg.text or "").lower()
                 
-                # --- NEW FORCE SWIPE DETECTION ---
+                # --- NEW DEEP SWIPE DETECTION ---
                 is_mentioned = f"@{BOT_USERNAME}".lower() in text
                 is_reply_to_me = False
                 context_text = None
                 
-                # Metadata extraction from dict for stability
-                m_dict = msg.dict()
-                reply_info = m_dict.get('replied_to_message', {})
-                
-                # Agar replied_to_message exist karta hai aur uska owner Bot hai
-                if reply_info and str(reply_info.get('user_id', '')) == my_id:
-                    is_reply_to_me = True
-                    context_text = reply_info.get('text', '')
-                
-                # Fallback check
-                if not is_reply_to_me and hasattr(msg, 'reply_to_message_id'):
-                    if msg.reply_to_message_id:
+                # Metadata extraction fixed for Pydantic V2
+                try:
+                    m_data = msg.model_dump() # 'dict' method is deprecated
+                    reply_info = m_data.get('replied_to_message', {})
+                    if reply_info and str(reply_info.get('user_id', '')) == my_id:
                         is_reply_to_me = True
+                        context_text = reply_info.get('text', '')
+                except:
+                    # Fallback for older versions
+                    r_msg = getattr(msg, 'replied_to_message', None)
+                    if r_msg and str(getattr(r_msg, 'user_id', '')) == my_id:
+                        is_reply_to_me = True
+                        context_text = getattr(r_msg, 'text', '')
 
                 log(f"📩 Incoming: {text} | Swipe: {is_reply_to_me}")
 
@@ -83,16 +83,14 @@ def run_bot():
                     
                     sender = "User"
                     try: 
-                        # User info fetch for username
-                        user_meta = cl.user_info_v1(msg.user_id)
-                        sender = user_meta.username
+                        sender = cl.user_info_v1(msg.user_id).username
                     except: pass
                     
                     reply_content = get_ai_reply(text, sender, context_text)
                     if reply_content:
                         time.sleep(random.randint(5, 10))
                         try:
-                            # FIXING THE ARGUMENT ERROR: (text, thread_id, item_id)
+                            # FIXED ARGUMENTS: (thread_id, text, item_id)
                             # Keyword arguments hata diye hain positional error fix karne ke liye
                             cl.direct_answer(TARGET_GROUP_ID, reply_content, msg.id)
                             log(f"✅ Swipe-Reply Sent!")
@@ -103,7 +101,7 @@ def run_bot():
                 processed_ids.add(msg.id)
 
         except Exception as e:
-            if "500" in str(e):
+            if "500" in str(e): # Handling Instagram Rate Limit
                 log("🛑 Instagram Limit! Sleeping 5 mins...")
                 time.sleep(300)
             else:
