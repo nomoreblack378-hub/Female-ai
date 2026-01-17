@@ -18,7 +18,7 @@ def get_ai_reply(user_message, username, context_message=None):
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     
     system_content = f"You are @{BOT_USERNAME}, a witty Indian girl. Reply in short Hinglish (max 10 words). Be natural and sharp."
-    user_content = f"Context: '{context_message}'\nUser {username}: {user_message}" if context_message else f"User {username}: {user_message}"
+    user_content = f"Context (Replied to you): '{context_message}'\nUser {username}: {user_message}" if context_message else f"User {username}: {user_message}"
 
     payload = {
         "model": "llama-3.3-70b-versatile", 
@@ -31,7 +31,7 @@ def get_ai_reply(user_message, username, context_message=None):
 
 def run_bot():
     cl = Client()
-    # High-End User Agent for better data
+    # High-quality User-Agent for group metadata
     cl.set_user_agent("Instagram 219.0.0.12.117 Android (30/11; 480dpi; 1080x2214; Google; Pixel 5; redfin; qcom; en_US; 340011805)")
 
     try:
@@ -48,6 +48,7 @@ def run_bot():
     while (time.time() - start_time) < 1320:
         try:
             log(f"--- Scanning Chat ---")
+            # Force thread refresh for swipe metadata
             thread = cl.direct_thread(TARGET_GROUP_ID)
             messages = thread.messages
             
@@ -61,18 +62,26 @@ def run_bot():
                 is_reply_to_me = False
                 context_text = None
 
-                # Swipe detection logic
+                # --- 🎯 SWIPE DETECTION ENGINE ---
                 try:
+                    # Method: Check model dictionary or dump
                     m_data = msg.dict() if hasattr(msg, 'dict') else msg.model_dump()
                     reply_info = m_data.get('replied_to_message')
+                    
                     if reply_info and str(reply_info.get('user_id', '')) == my_id:
                         is_reply_to_me = True
                         context_text = reply_info.get('text', '')
-                except: pass
+                except:
+                    # Fallback for older metadata formats
+                    r_msg = getattr(msg, 'replied_to_message', None)
+                    if r_msg and str(getattr(r_msg, 'user_id', '')) == my_id:
+                        is_reply_to_me = True
+                        context_text = getattr(r_msg, 'text', '')
+
+                log(f"📩 [{text[:10]}] | Swipe: {is_reply_to_me} | Mention: {is_mentioned}")
 
                 if is_mentioned or is_reply_to_me:
-                    log(f"🎯 Match! Mention: {is_mentioned} | Swipe: {is_reply_to_me}")
-                    
+                    log("🎯 Match Found! Processing reply...")
                     sender = "User"
                     try: sender = cl.user_info_v1(msg.user_id).username
                     except: pass
@@ -81,19 +90,21 @@ def run_bot():
                     if reply_content:
                         time.sleep(random.randint(4, 7))
                         try:
-                            # 🛠 FIX: Using named arguments to avoid positional mismatch
+                            # --- 🛠 POSITION FIX ---
+                            # Hum explicitly keyword arguments use karenge taaki library crash na ho
                             cl.direct_answer(text=reply_content, thread_id=TARGET_GROUP_ID, item_id=msg.id)
-                            log(f"✅ Reply Sent Successfully!")
+                            log(f"✅ Swipe Reply Sent!")
                         except Exception as e:
-                            log(f"⚠️ Answer Error: {e}. Trying fallback.")
+                            log(f"⚠️ direct_answer error: {e}. Falling back to normal send.")
                             cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
                 
                 processed_ids.add(msg.id)
 
         except Exception as e:
-            log(f"⚠️ Error: {e}")
+            log(f"⚠️ Loop Warning: {e}")
+            if "500" in str(e): time.sleep(300)
         
-        time.sleep(40)
+        time.sleep(45)
 
 if __name__ == "__main__":
     run_bot()
