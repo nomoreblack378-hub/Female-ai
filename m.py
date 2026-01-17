@@ -18,12 +18,7 @@ def get_ai_reply(user_message, username, context_message=None):
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     
     system_content = f"You are @{BOT_USERNAME}, a witty Indian girl. Reply in short Hinglish (max 10 words). Be sharp and natural."
-    
-    # Context handling (Reply/Swipe reference)
-    if context_message:
-        user_content = f"Someone replied to your msg '{context_message}': {user_message}"
-    else:
-        user_content = f"User {username}: {user_message}"
+    user_content = f"Context (Replied to your msg): '{context_message}'\nUser {username}: {user_message}" if context_message else f"User {username}: {user_message}"
 
     payload = {
         "model": "llama-3.3-70b-versatile", 
@@ -36,13 +31,13 @@ def get_ai_reply(user_message, username, context_message=None):
 
 def run_bot():
     cl = Client()
-    # High-quality User-Agent to ensure metadata is sent by Instagram
+    # Updated Mobile User-Agent for better group data fetching
     cl.set_user_agent("Instagram 219.0.0.12.117 Android (30/11; 480dpi; 1080x2214; Google; Pixel 5; redfin; qcom; en_US; 340011805)")
 
     try:
         cl.login_by_sessionid(SESSION_ID)
         my_id = str(cl.user_id)
-        log(f"✅ Bot Online! ID: {my_id}")
+        log(f"✅ Active! Bot ID: {my_id}")
     except Exception as e:
         log(f"❌ Login Failed: {e}")
         return
@@ -50,11 +45,10 @@ def run_bot():
     processed_ids = set()
     start_time = time.time()
     
-    while (time.time() - start_time) < 1320:
+    while (time.time() - start_time) < 1320: # 22 Min cycle
         try:
-            log(f"--- Scanning Chat History ---")
-            
-            # 🎯 BEST FIX: cl.direct_thread use karna zaroori hai swipe data ke liye
+            log(f"--- Scanning Deep Thread ---")
+            # Force thread refresh to get "replied_to_message" metadata
             thread = cl.direct_thread(TARGET_GROUP_ID)
             messages = thread.messages
             
@@ -68,28 +62,23 @@ def run_bot():
                 is_reply_to_me = False
                 context_text = None
 
-                # --- 🎯 SWIPE DETECTION ENGINE ---
+                # --- 🎯 SWIPE DETECTION LOGIC ---
                 try:
-                    # Method: Check model dump for replied_to_message
-                    m_dict = msg.dict() if hasattr(msg, 'dict') else msg.model_dump()
-                    reply_data = m_dict.get('replied_to_message')
-                    
-                    if reply_data and str(reply_data.get('user_id', '')) == my_id:
+                    m_data = msg.dict() if hasattr(msg, 'dict') else msg.model_dump()
+                    reply_info = m_data.get('replied_to_message')
+                    if reply_info and str(reply_info.get('user_id', '')) == my_id:
                         is_reply_to_me = True
-                        context_text = reply_data.get('text', '')
+                        context_text = reply_info.get('text', '')
                 except:
-                    # Fallback for older metadata formats
                     r_obj = getattr(msg, 'replied_to_message', None)
                     if r_obj and str(getattr(r_obj, 'user_id', '')) == my_id:
                         is_reply_to_me = True
                         context_text = getattr(r_obj, 'text', '')
 
-                # Status Log
                 log(f"📩 [{text[:10]}] | Swipe: {is_reply_to_me} | Mention: {is_mentioned}")
 
                 if is_mentioned or is_reply_to_me:
-                    log("🎯 Match Triggered! Getting AI Reply...")
-                    
+                    log("🎯 Match Triggered!")
                     sender = "User"
                     try: sender = cl.user_info_v1(msg.user_id).username
                     except: pass
@@ -98,9 +87,7 @@ def run_bot():
                     if reply_content:
                         time.sleep(random.randint(4, 7))
                         try:
-                            # --- 🛠 POSITION ARGUMENTS FIX ---
-                            # cl.direct_answer(text, thread_id, item_id)
-                            # 3 Positional arguments only (fixed for your crash)
+                            # 🛠 The Fix: (text, thread_id, item_id) positional arguments
                             cl.direct_answer(reply_content, TARGET_GROUP_ID, msg.id)
                             log(f"✅ Swipe Reply Sent!")
                         except Exception as e:
