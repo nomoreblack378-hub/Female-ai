@@ -17,10 +17,9 @@ def get_ai_reply(user_message, username, context_message=None):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     
-    # System prompt to keep it savage and short
-    system_content = f"You are @{BOT_USERNAME}, a witty Indian girl. Reply in short Hinglish (max 10 words). Be natural and sharp."
+    system_content = f"You are @{BOT_USERNAME}, a witty Indian girl. Reply in short Hinglish (max 10 words). Be sharp and natural."
     
-    # Adding context if it's a swipe/reply
+    # Context handling (Reply/Swipe reference)
     if context_message:
         user_content = f"Someone replied to your msg '{context_message}': {user_message}"
     else:
@@ -37,13 +36,13 @@ def get_ai_reply(user_message, username, context_message=None):
 
 def run_bot():
     cl = Client()
-    # Updated User-Agent for better metadata extraction
+    # High-quality User-Agent to ensure metadata is sent by Instagram
     cl.set_user_agent("Instagram 219.0.0.12.117 Android (30/11; 480dpi; 1080x2214; Google; Pixel 5; redfin; qcom; en_US; 340011805)")
 
     try:
         cl.login_by_sessionid(SESSION_ID)
         my_id = str(cl.user_id)
-        log(f"✅ Bot Active! Logged in as: {my_id}")
+        log(f"✅ Bot Online! ID: {my_id}")
     except Exception as e:
         log(f"❌ Login Failed: {e}")
         return
@@ -53,10 +52,9 @@ def run_bot():
     
     while (time.time() - start_time) < 1320:
         try:
-            log(f"--- Deep Scan Start ---")
+            log(f"--- Scanning Chat History ---")
             
-            # 🎯 THE FIX: Puray thread ko fetch karna metadata ke liye
-            # Normal direct_messages() swipe data hide kar deta hai.
+            # 🎯 BEST FIX: cl.direct_thread use karna zaroori hai swipe data ke liye
             thread = cl.direct_thread(TARGET_GROUP_ID)
             messages = thread.messages
             
@@ -72,54 +70,48 @@ def run_bot():
 
                 # --- 🎯 SWIPE DETECTION ENGINE ---
                 try:
-                    # Check if message is a reply to someone
-                    # Method: Using dictionary dump to bypass Pydantic errors
+                    # Method: Check model dump for replied_to_message
                     m_dict = msg.dict() if hasattr(msg, 'dict') else msg.model_dump()
                     reply_data = m_dict.get('replied_to_message')
                     
-                    if reply_data:
-                        # Check if the replied-to message was sent by the BOT
-                        if str(reply_data.get('user_id', '')) == my_id:
-                            is_reply_to_me = True
-                            context_text = reply_data.get('text', '')
+                    if reply_data and str(reply_data.get('user_id', '')) == my_id:
+                        is_reply_to_me = True
+                        context_text = reply_data.get('text', '')
                 except:
-                    # Fallback for older Pydantic versions
+                    # Fallback for older metadata formats
                     r_obj = getattr(msg, 'replied_to_message', None)
                     if r_obj and str(getattr(r_obj, 'user_id', '')) == my_id:
                         is_reply_to_me = True
                         context_text = getattr(r_obj, 'text', '')
 
-                # Logs ab 'Swipe: True' dikhayenge agar metadata match hua
-                log(f"📩 Msg: {text[:10]}... | Swipe: {is_reply_to_me} | Mention: {is_mentioned}")
+                # Status Log
+                log(f"📩 [{text[:10]}] | Swipe: {is_reply_to_me} | Mention: {is_mentioned}")
 
                 if is_mentioned or is_reply_to_me:
-                    log("🎯 Match Found! Preparing Response...")
+                    log("🎯 Match Triggered! Getting AI Reply...")
                     
                     sender = "User"
                     try: sender = cl.user_info_v1(msg.user_id).username
                     except: pass
                     
                     reply_content = get_ai_reply(text, sender, context_text)
-                    
                     if reply_content:
-                        time.sleep(random.randint(4, 7)) # Anti-spam delay
+                        time.sleep(random.randint(4, 7))
                         try:
                             # --- 🛠 POSITION ARGUMENTS FIX ---
-                            # Arguments order for instagrapi 2.2.1: (text, thread_id, item_id)
-                            # Keyword arguments hata diye hain taaki crash na ho
+                            # cl.direct_answer(text, thread_id, item_id)
+                            # 3 Positional arguments only (fixed for your crash)
                             cl.direct_answer(reply_content, TARGET_GROUP_ID, msg.id)
                             log(f"✅ Swipe Reply Sent!")
                         except Exception as e:
-                            log(f"⚠️ Answer failed: {e}. Using direct_send fallback.")
+                            log(f"⚠️ Answer error: {e}. Trying normal send.")
                             cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
                 
                 processed_ids.add(msg.id)
 
         except Exception as e:
-            log(f"⚠️ Loop Error: {e}")
-            if "500" in str(e): 
-                log("Server error, sleeping 5 mins...")
-                time.sleep(300)
+            log(f"⚠️ Loop Warning: {e}")
+            if "500" in str(e): time.sleep(300)
         
         time.sleep(45)
 
