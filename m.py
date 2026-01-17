@@ -4,10 +4,9 @@ import pytz
 from instagrapi import Client
 
 def log(message):
-    # flush=True logs ko turant GitHub Actions terminal pe dikhayega
     print(f"DEBUG: {message}", flush=True)
 
-# --- Configuration ---
+# --- Config ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SESSION_ID = os.getenv("SESSION_ID")
 TARGET_GROUP_ID = "746424351272036" 
@@ -17,19 +16,9 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ai_reply(user_message, username, context_message=None):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    
-    system_content = f"You are @{BOT_USERNAME}, a witty Indian girl. Reply in short Hinglish (max 10 words). Be natural and sharp."
-    
-    # Agar reply detect hua toh context AI ko bhej rahe hain
-    if context_message:
-        user_content = f"Context (Someone swiped on your message): '{context_message}'\nUser {username} says: {user_message}"
-    else:
-        user_content = f"User {username} says: {user_message}"
-
-    payload = {
-        "model": "llama-3.3-70b-versatile", 
-        "messages": [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]
-    }
+    system_content = f"You are @{BOT_USERNAME}, a savage Indian girl. Reply in short Hinglish (max 10 words). Be natural."
+    user_content = f"Someone replied to you: '{context_message}'. User {username}: {user_message}" if context_message else f"User {username}: {user_message}"
+    payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]}
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=10)
         return r.json()['choices'][0]['message']['content'].strip()
@@ -37,14 +26,13 @@ def get_ai_reply(user_message, username, context_message=None):
 
 def run_bot():
     cl = Client()
-    # High-End User Agent for full JSON metadata
+    # High-end User-Agent for server stability
     cl.set_user_agent("Instagram 219.0.0.12.117 Android (30/11; 480dpi; 1080x2214; Google; Pixel 5; redfin; qcom; en_US; 340011805)")
 
-    log("Starting Final Bot Sequence...")
     try:
         cl.login_by_sessionid(SESSION_ID)
         my_id = str(cl.user_id)
-        log(f"✅ Bot Active! Logged in as ID: {my_id}")
+        log(f"✅ Bot Started! My ID: {my_id}")
     except Exception as e:
         log(f"❌ Login Failed: {e}")
         return
@@ -52,11 +40,11 @@ def run_bot():
     processed_ids = set()
     start_time = time.time()
     
-    while (time.time() - start_time) < 1320: # 22 Minutes Runtime
+    while (time.time() - start_time) < 1320:
         try:
-            log(f"--- Scanning Chat ({datetime.now(IST).strftime('%H:%M:%S')}) ---")
+            log(f"--- Scanning Deep Chat ---")
             
-            # Metadata fetch karne ka sabse powerful tarika
+            # Instagram Group metadata load karne ke liye direct thread fetch
             thread = cl.direct_thread(TARGET_GROUP_ID)
             messages = thread.messages
             
@@ -70,55 +58,50 @@ def run_bot():
                 is_reply_to_me = False
                 context_text = None
 
-                # --- 🎯 THE FORCE DETECTION ENGINE ---
+                # --- 🎯 THE SWIPE DETECTION FIX ---
+                # Hum dictionary aur object dono levels pe check karenge
                 try:
-                    # Message ko dict mein convert karke check kar rahe hain (Most reliable)
-                    msg_raw = msg.dict()
-                    reply_meta = msg_raw.get('replied_to_message')
+                    m_data = msg.dict() if hasattr(msg, 'dict') else msg.model_dump()
+                    r_info = m_data.get('replied_to_message')
                     
-                    if reply_meta:
-                        # User ID match karna (Kya reply mere message par hai?)
-                        r_user_id = str(reply_meta.get('user_id', ''))
-                        if r_user_id == my_id:
-                            is_reply_to_me = True
-                            context_text = reply_meta.get('text', '')
-                except Exception as e:
+                    if r_info and str(r_info.get('user_id', '')) == my_id:
+                        is_reply_to_me = True
+                        context_text = r_info.get('text', '')
+                except:
                     # Fallback check
                     r_obj = getattr(msg, 'replied_to_message', None)
                     if r_obj and str(getattr(r_obj, 'user_id', '')) == my_id:
                         is_reply_to_me = True
                         context_text = getattr(r_obj, 'text', '')
 
-                # Logs for debugging in GitHub
-                log(f"📩 [{text[:15]}...] | Swipe: {is_reply_to_me} | Mention: {is_mentioned}")
+                # Status Log
+                log(f"📩 [{text[:10]}] | Swipe: {is_reply_to_me} | Mention: {is_mentioned}")
 
                 if is_mentioned or is_reply_to_me:
-                    log("🎯 Target Found! Generating Response...")
+                    log("🎯 Match Triggered! Processing...")
                     
                     sender = "User"
-                    try: 
-                        # User metadata refresh
-                        sender = cl.user_info_v1(msg.user_id).username
+                    try: sender = cl.user_info_v1(msg.user_id).username
                     except: pass
                     
                     reply_content = get_ai_reply(text, sender, context_text)
                     if reply_content:
-                        time.sleep(random.randint(4, 8))
+                        time.sleep(random.randint(4, 7))
                         try:
-                            # Arguments Fix: thread_id, text, item_id (Positional only)
+                            # --- 🛠 POSITION FIX FOR DIRECT_ANSWER ---
+                            # Aapke version mein sirf 3 arguments chahiye: (text, thread_id, item_id)
+                            # Ya fir (thread_id, text, item_id). Hum ise safe format mein bhejenge:
                             cl.direct_answer(TARGET_GROUP_ID, reply_content, msg.id)
-                            log(f"✅ Swipe Reply Sent: {reply_content}")
+                            log(f"✅ Swipe Reply Sent!")
                         except Exception as e:
-                            log(f"⚠️ Swipe Method Failed, Sending Normal: {e}")
+                            log(f"⚠️ Direct Answer Error: {e}. Sending Normal.")
                             cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
                 
                 processed_ids.add(msg.id)
 
         except Exception as e:
-            log(f"⚠️ Loop Warning: {e}")
-            if "500" in str(e): 
-                log("🛑 Rate Limit! Sleeping for 5 mins...")
-                time.sleep(300)
+            log(f"⚠️ Error: {e}")
+            if "500" in str(e): time.sleep(300)
         
         time.sleep(45)
 
