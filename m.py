@@ -18,12 +18,7 @@ def get_ai_reply(user_message, username, context_message=None):
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     
     system_content = f"You are @{BOT_USERNAME}, a witty Indian girl. Reply in short Hinglish (max 10 words). Be natural and sharp."
-    
-    # Agar reply detect hua toh context AI ko bhej rahe hain
-    if context_message:
-        user_content = f"Context (Someone swiped on your message): '{context_message}'\nUser {username} says: {user_message}"
-    else:
-        user_content = f"User {username} says: {user_message}"
+    user_content = f"Context: '{context_message}'\nUser {username}: {user_message}" if context_message else f"User {username}: {user_message}"
 
     payload = {
         "model": "llama-3.3-70b-versatile", 
@@ -36,14 +31,13 @@ def get_ai_reply(user_message, username, context_message=None):
 
 def run_bot():
     cl = Client()
-    # High-End User Agent taaki full JSON metadata mile
+    # High-End User Agent for better data
     cl.set_user_agent("Instagram 219.0.0.12.117 Android (30/11; 480dpi; 1080x2214; Google; Pixel 5; redfin; qcom; en_US; 340011805)")
 
-    log("Starting Final Bot Sequence...")
     try:
         cl.login_by_sessionid(SESSION_ID)
         my_id = str(cl.user_id)
-        log(f"✅ Bot Active! Logged in as ID: {my_id}")
+        log(f"✅ Bot Online! ID: {my_id}")
     except Exception as e:
         log(f"❌ Login Failed: {e}")
         return
@@ -51,11 +45,9 @@ def run_bot():
     processed_ids = set()
     start_time = time.time()
     
-    while (time.time() - start_time) < 1320: # 22 Minutes Runtime
+    while (time.time() - start_time) < 1320:
         try:
-            log(f"--- Scanning Chat ({datetime.now(IST).strftime('%H:%M:%S')}) ---")
-            
-            # Metadata fetch karne ke liye thread object refresh
+            log(f"--- Scanning Chat ---")
             thread = cl.direct_thread(TARGET_GROUP_ID)
             messages = thread.messages
             
@@ -69,49 +61,39 @@ def run_bot():
                 is_reply_to_me = False
                 context_text = None
 
-                # --- 🎯 SWIPE DETECTION ENGINE ---
+                # Swipe detection logic
                 try:
-                    # Raw data se check karna sabse reliable hai
-                    msg_raw = msg.dict() if hasattr(msg, 'dict') else msg.model_dump()
-                    reply_meta = msg_raw.get('replied_to_message')
-                    
-                    if reply_meta:
-                        if str(reply_meta.get('user_id', '')) == my_id:
-                            is_reply_to_me = True
-                            context_text = reply_meta.get('text', '')
-                except:
-                    # Backup method
-                    r_obj = getattr(msg, 'replied_to_message', None)
-                    if r_obj and str(getattr(r_obj, 'user_id', '')) == my_id:
+                    m_data = msg.dict() if hasattr(msg, 'dict') else msg.model_dump()
+                    reply_info = m_data.get('replied_to_message')
+                    if reply_info and str(reply_info.get('user_id', '')) == my_id:
                         is_reply_to_me = True
-                        context_text = getattr(r_obj, 'text', '')
-
-                log(f"📩 [{text[:15]}...] | Swipe: {is_reply_to_me} | Mention: {is_mentioned}")
+                        context_text = reply_info.get('text', '')
+                except: pass
 
                 if is_mentioned or is_reply_to_me:
-                    log("🎯 Match Found! Processing...")
+                    log(f"🎯 Match! Mention: {is_mentioned} | Swipe: {is_reply_to_me}")
+                    
                     sender = "User"
                     try: sender = cl.user_info_v1(msg.user_id).username
                     except: pass
                     
                     reply_content = get_ai_reply(text, sender, context_text)
                     if reply_content:
-                        time.sleep(random.randint(4, 8))
+                        time.sleep(random.randint(4, 7))
                         try:
-                            # Fixed positional arguments for direct_answer
-                            cl.direct_answer(reply_content, TARGET_GROUP_ID, msg.id)
-                            log(f"✅ Swipe Reply Sent!")
+                            # 🛠 FIX: Using named arguments to avoid positional mismatch
+                            cl.direct_answer(text=reply_content, thread_id=TARGET_GROUP_ID, item_id=msg.id)
+                            log(f"✅ Reply Sent Successfully!")
                         except Exception as e:
-                            log(f"⚠️ Answer Error: {e}. Normal send mode.")
+                            log(f"⚠️ Answer Error: {e}. Trying fallback.")
                             cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
                 
                 processed_ids.add(msg.id)
 
         except Exception as e:
-            log(f"⚠️ Loop Warning: {e}")
-            if "500" in str(e): time.sleep(300)
+            log(f"⚠️ Error: {e}")
         
-        time.sleep(45)
+        time.sleep(40)
 
 if __name__ == "__main__":
     run_bot()
