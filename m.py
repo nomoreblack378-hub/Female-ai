@@ -15,14 +15,9 @@ BOT_USERNAME = "mo.chi.351"
 def get_ai_reply(user_message, username, context_message=None):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    
-    system_content = f"You are @{BOT_USERNAME}, a witty Indian girl. Reply in short Hinglish (max 10 words). Be savage."
+    system_content = f"You are @{BOT_USERNAME}, a savage Indian girl. Reply in short Hinglish (max 10 words)."
     user_content = f"Context: '{context_message}'\nUser {username}: {user_message}" if context_message else f"User {username}: {user_message}"
-
-    payload = {
-        "model": "llama-3.3-70b-versatile", 
-        "messages": [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]
-    }
+    payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]}
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=10)
         return r.json()['choices'][0]['message']['content'].strip()
@@ -30,7 +25,6 @@ def get_ai_reply(user_message, username, context_message=None):
 
 def run_bot():
     cl = Client()
-    # Updated User-Agent for better metadata compatibility
     cl.set_user_agent("Instagram 219.0.0.12.117 Android (30/11; 480dpi; 1080x2214; Google; Pixel 5; redfin; qcom; en_US; 340011805)")
 
     try:
@@ -47,7 +41,6 @@ def run_bot():
     while (time.time() - start_time) < 1320:
         try:
             log(f"--- Scanning Chat ---")
-            # Thread fetch with forced refresh
             thread = cl.direct_thread(TARGET_GROUP_ID)
             messages = thread.messages
             
@@ -61,44 +54,41 @@ def run_bot():
                 is_reply_to_me = False
                 context_text = None
 
-                # --- Improved Swipe Detection ---
-                # Hum direct 'replied_to_message' attribute check karenge
-                reply_data = getattr(msg, 'replied_to_message', None)
-                if reply_data:
-                    # Agar replied message bot ka hai
-                    if str(getattr(reply_data, 'user_id', '')) == my_id:
+                # Swipe detection using native object attributes
+                if hasattr(msg, 'replied_to_message') and msg.replied_to_message:
+                    if str(msg.replied_to_message.user_id) == my_id:
                         is_reply_to_me = True
-                        context_text = getattr(reply_data, 'text', '')
+                        context_text = msg.replied_to_message.text
 
                 log(f"📩 [{text[:15]}] | Swipe: {is_reply_to_me} | Mention: {is_mentioned}")
 
                 if is_mentioned or is_reply_to_me:
-                    log("🎯 Target Found! Replying...")
+                    log("🎯 Match! Processing...")
                     sender = "User"
-                    try: 
-                        user_info = cl.user_info_v1(msg.user_id)
-                        sender = user_info.username
+                    try: sender = cl.user_info_v1(msg.user_id).username
                     except: pass
                     
                     reply_content = get_ai_reply(text, sender, context_text)
                     if reply_content:
                         time.sleep(random.randint(3, 6))
+                        # 🛠 FINAL ARGUMENT FIX: Try multiple ways to reply
                         try:
-                            # 🛠 FIX: Using the most compatible argument names for direct_answer
-                            # 'item_id' ki jagah sirf 'text' aur 'thread_id' bhej kar dekhte hain 
-                            # ya positional argument try karte hain bina extra labels ke
+                            # Try Method 1: Most common
                             cl.direct_answer(reply_content, TARGET_GROUP_ID, msg.id)
-                            log(f"✅ Reply Sent Successfully!")
-                        except Exception as e:
-                            log(f"⚠️ direct_answer error: {e}. Falling back to direct_send.")
-                            cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
+                            log(f"✅ Method 1 Sent!")
+                        except:
+                            try:
+                                # Try Method 2: Fallback for some versions
+                                cl.direct_answer(text=reply_content, thread_id=TARGET_GROUP_ID, message_id=msg.id)
+                                log(f"✅ Method 2 Sent!")
+                            except Exception as e:
+                                # Method 3: Absolute fallback
+                                cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
+                                log(f"✅ Fallback Send Used!")
                 
                 processed_ids.add(msg.id)
-
         except Exception as e:
-            log(f"⚠️ Loop Warning: {e}")
-            time.sleep(30)
-        
+            log(f"⚠️ Warning: {e}")
         time.sleep(45)
 
 if __name__ == "__main__":
