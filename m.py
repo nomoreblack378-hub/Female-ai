@@ -15,7 +15,7 @@ BOT_USERNAME = "mo.chi.351"
 def get_ai_reply(user_message, username, context_message=None):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    system_content = f"You are @{BOT_USERNAME}, a savage Indian girl. Reply in short Hinglish (max 10 words)."
+    system_content = f"You are @{BOT_USERNAME}, a savage Indian girl. Reply in short Hinglish (max 10 words). Be sharp."
     user_content = f"Context: '{context_message}'\nUser {username}: {user_message}" if context_message else f"User {username}: {user_message}"
     payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]}
     try:
@@ -54,7 +54,7 @@ def run_bot():
                 is_reply_to_me = False
                 context_text = None
 
-                # Swipe detection using native object attributes
+                # 🎯 Improved Swipe Detection
                 if hasattr(msg, 'replied_to_message') and msg.replied_to_message:
                     if str(msg.replied_to_message.user_id) == my_id:
                         is_reply_to_me = True
@@ -63,7 +63,7 @@ def run_bot():
                 log(f"📩 [{text[:15]}] | Swipe: {is_reply_to_me} | Mention: {is_mentioned}")
 
                 if is_mentioned or is_reply_to_me:
-                    log("🎯 Match! Processing...")
+                    log("🎯 Target Found! Processing...")
                     sender = "User"
                     try: sender = cl.user_info_v1(msg.user_id).username
                     except: pass
@@ -71,20 +71,25 @@ def run_bot():
                     reply_content = get_ai_reply(text, sender, context_text)
                     if reply_content:
                         time.sleep(random.randint(3, 6))
-                        # 🛠 FINAL ARGUMENT FIX: Try multiple ways to reply
+                        # 🛠 DYNAMIC REPLY ENGINE (SABSE IMPORTANT FIX)
                         try:
-                            # Try Method 1: Most common
+                            # Try Method 1: standard (text, thread_id, item_id)
                             cl.direct_answer(reply_content, TARGET_GROUP_ID, msg.id)
                             log(f"✅ Method 1 Sent!")
-                        except:
+                        except Exception as e1:
                             try:
-                                # Try Method 2: Fallback for some versions
-                                cl.direct_answer(text=reply_content, thread_id=TARGET_GROUP_ID, message_id=msg.id)
+                                # Try Method 2: named (text, thread_id, item_id)
+                                cl.direct_answer(text=reply_content, thread_id=TARGET_GROUP_ID, item_id=msg.id)
                                 log(f"✅ Method 2 Sent!")
-                            except Exception as e:
-                                # Method 3: Absolute fallback
-                                cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
-                                log(f"✅ Fallback Send Used!")
+                            except Exception as e2:
+                                try:
+                                    # Try Method 3: named (text, thread_id, message_id)
+                                    cl.direct_answer(text=reply_content, thread_id=TARGET_GROUP_ID, message_id=msg.id)
+                                    log(f"✅ Method 3 Sent!")
+                                except Exception as e3:
+                                    # Final Fallback: direct_send
+                                    cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
+                                    log(f"✅ Fallback Sent (Normal)!")
                 
                 processed_ids.add(msg.id)
         except Exception as e:
