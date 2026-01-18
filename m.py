@@ -15,9 +15,15 @@ BOT_USERNAME = "mo.chi.351"
 def get_ai_reply(user_message, username, context_message=None):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    system_content = f"You are @{BOT_USERNAME}, a savage Indian girl. Reply in short Hinglish (max 10 words). Be sharp."
-    user_content = f"Context: '{context_message}'\nUser {username}: {user_message}" if context_message else f"User {username}: {user_message}"
-    payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]}
+    
+    # AI ko batana ki ye swipe reply hai
+    system_content = f"You are @{BOT_USERNAME}, a witty Indian girl. You just got a reply to your message. Be savage and short (max 10 words)."
+    user_content = f"User {username} replied to your message '{context_message}': {user_message}" if context_message else f"User {username}: {user_message}"
+
+    payload = {
+        "model": "llama-3.3-70b-versatile", 
+        "messages": [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]
+    }
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=10)
         return r.json()['choices'][0]['message']['content'].strip()
@@ -25,7 +31,8 @@ def get_ai_reply(user_message, username, context_message=None):
 
 def run_bot():
     cl = Client()
-    cl.set_user_agent("Instagram 219.0.0.12.117 Android (30/11; 480dpi; 1080x2214; Google; Pixel 5; redfin; qcom; en_US; 340011805)")
+    # Desktop User-Agent swipe data fetch karne mein zyada help karta hai
+    cl.set_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36")
 
     try:
         cl.login_by_sessionid(SESSION_ID)
@@ -40,7 +47,8 @@ def run_bot():
     
     while (time.time() - start_time) < 1320:
         try:
-            log(f"--- Scanning Chat ---")
+            log(f"--- Scanning Deep Metadata ---")
+            # thread_v2 use karne se swipe information zyada milti hai
             thread = cl.direct_thread(TARGET_GROUP_ID)
             messages = thread.messages
             
@@ -54,44 +62,52 @@ def run_bot():
                 is_reply_to_me = False
                 context_text = None
 
-                # 🎯 Force Deep Swipe Detection
-                if hasattr(msg, 'replied_to_message') and msg.replied_to_message:
-                    # Explicit user_id comparison
-                    r_user_id = str(getattr(msg.replied_to_message, 'user_id', ''))
-                    if r_user_id == my_id:
-                        is_reply_to_me = True
-                        context_text = getattr(msg.replied_to_message, 'text', '')
+                # --- 🎯 THE SWIPE FIX (DEEP SCAN) ---
+                # Instagram API mein swipe data 'reply_to_item' ya 'replied_to_message' mein hota hai
+                try:
+                    # Method A: Object Attribute check
+                    if hasattr(msg, 'replied_to_message') and msg.replied_to_message:
+                        r_msg = msg.replied_to_message
+                        if str(getattr(r_msg, 'user_id', '')) == my_id:
+                            is_reply_to_me = True
+                            context_text = getattr(r_msg, 'text', 'Previous Message')
+                    
+                    # Method B: Dictionary check (for different library versions)
+                    if not is_reply_to_me:
+                        m_dict = msg.dict() if hasattr(msg, 'dict') else {}
+                        reply_info = m_dict.get('replied_to_message') or m_dict.get('reply_to_item')
+                        if reply_info and str(reply_info.get('user_id', '')) == my_id:
+                            is_reply_to_me = True
+                            context_text = reply_info.get('text', 'Previous Message')
+                except: pass
 
                 log(f"📩 [{text[:15]}] | Swipe: {is_reply_to_me} | Mention: {is_mentioned}")
 
                 if is_mentioned or is_reply_to_me:
-                    log("🎯 Target Found! Processing...")
+                    log("🎯 Target Found! Replying...")
                     sender = "User"
                     try: sender = cl.user_info_v1(msg.user_id).username
                     except: pass
                     
                     reply_content = get_ai_reply(text, sender, context_text)
                     if reply_content:
-                        time.sleep(random.randint(3, 6))
-                        # 🛠 DYNAMIC REPLY ENGINE
+                        time.sleep(random.randint(2, 5))
+                        # Multi-Method Reply Engine (No crashes)
                         try:
-                            # Method 1: Positional (text, thread_id, item_id)
+                            # Try to reply as a thread (swipe back)
                             cl.direct_answer(reply_content, TARGET_GROUP_ID, msg.id)
-                            log(f"✅ Method 1 Sent!")
-                        except Exception:
-                            try:
-                                # Method 2: Named with message_id
-                                cl.direct_answer(text=reply_content, thread_id=TARGET_GROUP_ID, message_id=msg.id)
-                                log(f"✅ Method 2 Sent!")
-                            except Exception:
-                                # Final Fallback: direct_send (Reply as a new message)
-                                cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
-                                log(f"✅ Fallback Sent (Normal)!")
+                            log(f"✅ Replied to Swipe!")
+                        except:
+                            cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
+                            log(f"✅ Fallback Sent!")
                 
                 processed_ids.add(msg.id)
+
         except Exception as e:
-            log(f"⚠️ Warning: {e}")
-        time.sleep(45)
+            log(f"⚠️ Loop Warning: {e}")
+            time.sleep(10)
+        
+        time.sleep(30)
 
 if __name__ == "__main__":
     run_bot()
