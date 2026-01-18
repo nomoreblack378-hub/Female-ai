@@ -54,11 +54,13 @@ def run_bot():
                 is_reply_to_me = False
                 context_text = None
 
-                # 🎯 Improved Swipe Detection
+                # 🎯 Force Deep Swipe Detection
                 if hasattr(msg, 'replied_to_message') and msg.replied_to_message:
-                    if str(msg.replied_to_message.user_id) == my_id:
+                    # Explicit user_id comparison
+                    r_user_id = str(getattr(msg.replied_to_message, 'user_id', ''))
+                    if r_user_id == my_id:
                         is_reply_to_me = True
-                        context_text = msg.replied_to_message.text
+                        context_text = getattr(msg.replied_to_message, 'text', '')
 
                 log(f"📩 [{text[:15]}] | Swipe: {is_reply_to_me} | Mention: {is_mentioned}")
 
@@ -71,25 +73,20 @@ def run_bot():
                     reply_content = get_ai_reply(text, sender, context_text)
                     if reply_content:
                         time.sleep(random.randint(3, 6))
-                        # 🛠 DYNAMIC REPLY ENGINE (SABSE IMPORTANT FIX)
+                        # 🛠 DYNAMIC REPLY ENGINE
                         try:
-                            # Try Method 1: standard (text, thread_id, item_id)
+                            # Method 1: Positional (text, thread_id, item_id)
                             cl.direct_answer(reply_content, TARGET_GROUP_ID, msg.id)
                             log(f"✅ Method 1 Sent!")
-                        except Exception as e1:
+                        except Exception:
                             try:
-                                # Try Method 2: named (text, thread_id, item_id)
-                                cl.direct_answer(text=reply_content, thread_id=TARGET_GROUP_ID, item_id=msg.id)
+                                # Method 2: Named with message_id
+                                cl.direct_answer(text=reply_content, thread_id=TARGET_GROUP_ID, message_id=msg.id)
                                 log(f"✅ Method 2 Sent!")
-                            except Exception as e2:
-                                try:
-                                    # Try Method 3: named (text, thread_id, message_id)
-                                    cl.direct_answer(text=reply_content, thread_id=TARGET_GROUP_ID, message_id=msg.id)
-                                    log(f"✅ Method 3 Sent!")
-                                except Exception as e3:
-                                    # Final Fallback: direct_send
-                                    cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
-                                    log(f"✅ Fallback Sent (Normal)!")
+                            except Exception:
+                                # Final Fallback: direct_send (Reply as a new message)
+                                cl.direct_send(reply_content, thread_ids=[TARGET_GROUP_ID])
+                                log(f"✅ Fallback Sent (Normal)!")
                 
                 processed_ids.add(msg.id)
         except Exception as e:
